@@ -1,5 +1,3 @@
-file.rename("Untitled1.R", "PCA.R")
-
 library(ggplot2)
 library(ggbiplot)
 library(dplyr)
