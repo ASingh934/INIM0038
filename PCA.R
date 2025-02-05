@@ -5,6 +5,7 @@ library(ggbiplot)
 library(dplyr)
 library(ggrepel)
 library(ggpubr)
+library(ggfortify)
 
 gene_data <- read.csv("C:/Users/ABSin/Downloads/BIOAID_tpm_PC0.001_log2_genesymbol_dedup (1).csv")
 
@@ -104,24 +105,25 @@ group_labels <- factor(group_labels, levels = c("Oxford", "UCL", "UHB", "Control
 
 # Visualise PCA using a PCA plot
 
-pca_plot <- ggbiplot(
+plot_data <- data.frame(group_labels = group_labels)
+rownames(plot_data) <- rownames(PCA_ready_data)
+
+pca_plot <- autoplot(
   pca_result,
-  obs.scale = 1, 
-  var.scale = 1,
-  ellipse = FALSE, 
-  circle = FALSE,
-  var.axes = FALSE,  
-  labels = NULL
+  data = plot_data,         # supplies the grouping variable
+  colour = "group_labels",  # maps point colours to group_labels
+  size = 1,                 # sets point size
+  shape = 16                # sets point shape
 ) +
-  geom_point(aes(color = group_labels), size = 1, shape = 16, stroke = 0) +
-  scale_color_manual(values = c("Oxford" = "blue", 
-                                "UCL" = "red", 
-                                "UHB" = "green", 
-                                "Controls" = "purple")) +
+  scale_color_manual(values = c(
+    "Oxford"   = "blue", 
+    "UCL"      = "red", 
+    "UHB"      = "green", 
+    "Controls" = "purple"
+  )) +
   guides(color = guide_legend(override.aes = list(size = 5))) +
   labs(title = "PCA of Gene Expression Data", color = "Group") +
-  theme_minimal()
-
+  theme_pubr()
 
 print(pca_plot)
 
@@ -149,6 +151,8 @@ scree_plot <- ggplot(scree_data_50, aes(x = PC, y = Variance)) +
   theme_minimal()
 
 print(scree_plot)
+
+#############################################################################
 
 
 
