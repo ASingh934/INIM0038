@@ -1,7 +1,10 @@
+file.rename("Untitled1.R", "PCA.R")
+
 library(ggplot2)
 library(ggbiplot)
 library(dplyr)
 library(ggrepel)
+library(ggpubr)
 
 gene_data <- read.csv("C:/Users/ABSin/Downloads/BIOAID_tpm_PC0.001_log2_genesymbol_dedup (1).csv")
 
@@ -44,24 +47,12 @@ gene_data <- gene_data %>% select(all_of(intersect(names(gene_data), valid_genes
 ###############################################################################
 
 # Prepares the gene_data for PCA
-
-# Replace missing values with the mean (derived from the entire column)
-PCA_ready_data <- gene_data %>%
-  mutate(across(everything(), ~ ifelse(is.na(.), mean(., na.rm = TRUE), .)))
-
-# Detects columns containing 0 variance from the dataset
-zero_variance_cols <-apply(PCA_ready_data, 2, var) == 0 
-
-# Removes these columns from the dataset
-PCA_ready_data <- PCA_ready_data[, !zero_variance_cols] # Removes zero var columns
-
-# Scales the data (involves centering too)
-PCA_ready_data <- scale(PCA_ready_data)
+PCA_ready_data <- gene_data
 
 ###############################################################################
 
 # Perform PCA
-pca_result <- prcomp(PCA_ready_data, center = TRUE, scale. = TRUE)
+pca_result <- prcomp(PCA_ready_data, center = TRUE, scale. = FALSE)
 
 ###############################################################################
 
