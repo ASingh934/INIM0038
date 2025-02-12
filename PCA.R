@@ -155,7 +155,7 @@ print(scree_plot)
 
 #############################################################################
 
-# Plot distribution of MX1, IFI27 and IFI44L expression
+# Plot distribution of MX1, IFI27 and IFI44L expression by group
 
 # Define the genes of interest
 genes_interest <- c("MX1", "IFI44L", "IFI27")
@@ -222,6 +222,63 @@ summary_stats <- gene_long %>%
 
 # Print the summary statistics to the console
 print(summary_stats)
+
+#############################################################################
+
+# Plot distribution of MX1, IFI27 and IFI44L expression by control / infected
+
+#############################################################################
+# Create new box plots with only two groups: "Controls" and "Intervention"
+
+# In gene_long, 'Group' currently has 4 levels. We collapse them into 2:
+# If the sample is labeled as "Controls", it remains "Controls"; otherwise, it becomes "Intervention".
+gene_long2 <- gene_long %>%
+  mutate(Group2 = if_else(Group == "Controls", "Controls", "Intervention"))
+
+# Create the box plot for the two groups
+gene_expression_plot_2 <- ggplot(gene_long2, aes(x = Group2, y = Expression, color = Group2)) +
+  # Boxplot to display the overall distribution per new group
+  geom_boxplot(alpha = 0.3, outlier.shape = NA) +
+  # Jittered points to display individual sample values
+  geom_jitter(width = 0.2, size = 2, alpha = 0.8) +
+  # Facet by gene so each gene has its own panel
+  facet_wrap(~ Gene, scales = "free_y") +
+  # Apply a new manual colour scheme for the two groups
+  scale_color_manual(values = c(
+    "Controls"     = "purple", 
+    "Intervention" = "blue"
+  )) +
+  labs(
+    title = "Expression Distribution of MX1, IFI44L, and IFI27 (2 Groups)",
+    x = "Group",
+    y = "Expression"
+  ) +
+  theme_pubr() +
+  theme(
+    legend.position = "right",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+# Display the new box plots
+print(gene_expression_plot_2)
+
+
+# Calculate and print summary statistics for the new grouping (Group2)
+# The summary includes the count, median, Q1, Q3, and IQR.
+
+summary_stats2 <- gene_long2 %>%
+  group_by(Gene, Group2) %>%
+  summarise(
+    Count  = n(),
+    Median = median(Expression, na.rm = TRUE),
+    Q1     = quantile(Expression, 0.25, na.rm = TRUE),
+    Q3     = quantile(Expression, 0.75, na.rm = TRUE),
+    IQR    = IQR(Expression, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+# Print the summary statistics to the console
+print(summary_stats2)
 
 
 
