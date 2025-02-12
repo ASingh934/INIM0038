@@ -6,6 +6,7 @@ library(dplyr)
 library(ggrepel)
 library(ggpubr)
 library(ggfortify)
+library(tidyr)
 
 gene_data <- read.csv("C:/Users/ABSin/Downloads/BIOAID_tpm_PC0.001_log2_genesymbol_dedup (1).csv")
 
@@ -153,6 +154,75 @@ scree_plot <- ggplot(scree_data_50, aes(x = PC, y = Variance)) +
 print(scree_plot)
 
 #############################################################################
+
+# Plot distribution of MX1, IFI27 and IFI44L expression
+
+# Define the genes of interest
+genes_interest <- c("MX1", "IFI44L", "IFI27")
+
+# Create a subset of PCA_ready_data with only the genes of interest.
+# Make sure to keep it as a data.frame.
+gene_subset <- PCA_ready_data[, genes_interest, drop = FALSE]
+
+# Add the group_labels (created earlier) as a new column
+gene_subset$Group <- group_labels
+
+# Optionally, add sample IDs as a column if needed later for identification.
+gene_subset$SampleID <- rownames(PCA_ready_data)
+
+# Reshape the data from wide to long format: each row will be one observation (one gene's expression for a sample)
+gene_long <- gene_subset %>%
+  pivot_longer(
+    cols = all_of(genes_interest),
+    names_to = "Gene",
+    values_to = "Expression"
+  )
+
+# Create the plot
+gene_expression_plot <- ggplot(gene_long, aes(x = Group, y = Expression, color = Group)) +
+  # Boxplot to display the overall distribution per group
+  geom_boxplot(alpha = 0.3, outlier.shape = NA) +
+  # Jittered points to display individual sample values
+  geom_jitter(width = 0.2, size = 2, alpha = 0.8) +
+  # Create separate facets for each gene
+  facet_wrap(~ Gene, scales = "free_y") +
+  # Apply the same manual colour scheme as your PCA plot
+  scale_color_manual(values = c(
+    "Oxford"   = "blue", 
+    "UCL"      = "red", 
+    "UHB"      = "green", 
+    "Controls" = "purple"
+  )) +
+  labs(
+    title = "Expression Distribution of MX1, IFI44L, and IFI27",
+    x = "Group",
+    y = "Expression"
+  ) +
+  theme_pubr() +
+  theme(
+    legend.position = "right",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+# Display the box plots
+print(gene_expression_plot)
+
+# This table will show the count, median, Q1 (25th percentile), Q3 (75th percentile),
+# and the interquartile range (IQR) for the expression values.
+summary_stats <- gene_long %>%
+  group_by(Gene, Group) %>%
+  summarise(
+    Count  = n(),
+    Median = median(Expression, na.rm = TRUE),
+    Q1     = quantile(Expression, 0.25, na.rm = TRUE),
+    Q3     = quantile(Expression, 0.75, na.rm = TRUE),
+    IQR    = IQR(Expression, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+# Print the summary statistics to the console
+print(summary_stats)
+
 
 
 
