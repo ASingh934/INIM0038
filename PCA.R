@@ -282,3 +282,35 @@ gene_expression_plot_2 <- ggplot(gene_long2, aes(x = Group2, y = Expression_z, c
 
 # Display the new box plots
 print(gene_expression_plot_2)
+###############################################################################
+# Create a new grouping variable (if not already done)
+gene_long2 <- gene_long %>%
+  mutate(Group2 = if_else(Group == "Controls", "Controls", "Intervention"))
+
+# Histogram of Gene Expression Z-Scores by Group
+histogram_plot_z <- ggplot(gene_long2, aes(x = Expression_z, fill = Group2)) +
+  geom_histogram(alpha = 0.6, bins = 30, position = "identity") +
+  facet_wrap(~ Gene, scales = "free") +
+  labs(
+    title = "Histogram of Gene Expression Z-Scores (2 Groups)",
+    x = "Z-Score",
+    y = "Count"
+  ) +
+  theme_pubr() +
+  theme(legend.position = "right")
+
+print(histogram_plot_z)
+
+# Density Plot of Gene Expression Z-Scores by Group
+density_plot_z <- ggplot(gene_long2, aes(x = Expression_z, fill = Group2, color = Group2)) +
+  geom_density(alpha = 0.4) +
+  facet_wrap(~ Gene, scales = "free") +
+  labs(
+    title = "Density Plot of Gene Expression Z-Scores (2 Groups)",
+    x = "Z-Score",
+    y = "Density"
+  ) +
+  theme_pubr() +
+  theme(legend.position = "right")
+
+print(density_plot_z)
