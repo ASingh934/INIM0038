@@ -299,6 +299,84 @@ histogram_plot_z <- ggplot(gene_long2, aes(x = Expression_z, fill = Group2)) +
   theme_pubr() +
   theme(legend.position = "right")
 
+###############################################################################
+# Controls with |z|> 1 have now been removed
+
+# -------------------------------
+# Step 1: Reassign groups and prepare for outlier removal & z-score recalculation
+# -------------------------------
+gene_long_recalc <- gene_long %>%
+  # Create a new grouping variable: "Controls" remain, all others become "Intervention"
+  mutate(Group2 = if_else(Group == "Controls", "Controls", "Intervention")) %>%
+  group_by(Gene) %>%
+  # Calculate temporary control-based statistics and temporary z-scores:
+  mutate(
+    temp_mean = mean(Expression[Group == "Controls"], na.rm = TRUE),
+    temp_sd   = sd(Expression[Group == "Controls"], na.rm = TRUE),
+    temp_z    = (Expression - temp_mean) / temp_sd
+  ) %>%
+  # Remove control samples that are outliers (|temp_z| > 1)
+  filter(!(Group == "Controls" & abs(temp_z) > 1)) %>%
+  # Recalculate control mean and SD using only the filtered controls
+  mutate(
+    new_control_mean = mean(Expression[Group == "Controls"], na.rm = TRUE),
+    new_control_sd   = sd(Expression[Group == "Controls"], na.rm = TRUE)
+  ) %>%
+  # Recalculate the z-score for all samples based on the new control reference
+  mutate(Expression_z = (Expression - new_control_mean) / new_control_sd) %>%
+  ungroup()
+
+# -------------------------------
+# Step 2: Plot the results using the recalculated z-scores
+# -------------------------------
+
+# Box Plot of Recalculated Z-Scores by Group (Controls vs. Intervention)
+box_plot_z <- ggplot(gene_long_recalc, aes(x = Group2, y = Expression_z, color = Group2)) +
+  geom_boxplot(alpha = 0.3, outlier.shape = NA) +
+  geom_jitter(width = 0.2, size = 2, alpha = 0.8) +
+  facet_wrap(~ Gene, scales = "free_y") +
+  scale_color_manual(values = c("Controls" = "purple", "Intervention" = "blue")) +
+  labs(
+    title = "Expression Distribution (Biomarker Z Scores) after Removing Outlier Controls",
+    x = "Group",
+    y = "Biomarker Z Score"
+  ) +
+  theme_pubr() +
+  theme(
+    legend.position = "right",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+print(box_plot_z)
+
+# Histogram of Recalculated Z-Scores by Group
+histogram_plot_z <- ggplot(gene_long_recalc, aes(x = Expression_z, fill = Group2)) +
+  geom_histogram(alpha = 0.6, bins = 30, position = "identity") +
+  facet_wrap(~ Gene, scales = "free") +
+  scale_fill_manual(values = c("Controls" = "purple", "Intervention" = "blue")) +
+  labs(
+    title = "Histogram of Gene Expression Z-Scores (Filtered Controls)",
+    x = "Z-Score",
+    y = "Count"
+  ) +
+  theme_pubr() +
+  theme(legend.position = "right")
+print(histogram_plot_z)
+
+# Density Plot of Recalculated Z-Scores by Group
+density_plot_z <- ggplot(gene_long_recalc, aes(x = Expression_z, fill = Group2, color = Group2)) +
+  geom_density(alpha = 0.4) +
+  facet_wrap(~ Gene, scales = "free") +
+  scale_fill_manual(values = c("Controls" = "purple", "Intervention" = "blue")) +
+  scale_color_manual(values = c("Controls" = "purple", "Intervention" = "blue")) +
+  labs(
+    title = "Density Plot of Gene Expression Z-Scores (Filtered Controls)",
+    x = "Z-Score",
+    y = "Density"
+  ) +
+  theme_pubr() +
+  theme(legend.position = "right")
+print(density_plot_z)
+
 print(histogram_plot_z)
 
 # Density Plot of Gene Expression Z-Scores by Group
