@@ -392,3 +392,337 @@ density_plot_z <- ggplot(gene_long2, aes(x = Expression_z, fill = Group2, color 
   theme(legend.position = "right")
 
 print(density_plot_z)
+
+
+############################################################################
+# Louvain clustering
+
+# Load required packages
+library(igraph)
+library(ggplot2)
+library(gridExtra)
+
+# ------------------------------
+# Assumptions:
+#   - PCA_ready_data: gene expression matrix (rows: patients, columns: genes)
+#   - group_labels: factor vector (levels: "Oxford", "UCL", "UHB", "Controls")
+# ------------------------------
+
+# Compute the correlation among patients
+patient_corr <- cor(t(PCA_ready_data), use = "pairwise.complete.obs")
+
+# Define the thresholds to test
+thresholds <- c(0.5, 0.7, 0.9, 0.91, 0.93, 0.95)
+
+# Prepare a data frame to store results
+results <- data.frame(threshold = thresholds,
+                      num_communities = NA,
+                      modularity = NA)
+
+# Loop over each threshold to perform Louvain clustering
+for(i in seq_along(thresholds)){
+  th <- thresholds[i]
+  
+  # Create an adjacency matrix: set correlations below the threshold to 0
+  adj <- patient_corr
+  adj[adj < th] <- 0
+  
+  # Build the graph from the thresholded matrix
+  g <- graph_from_adjacency_matrix(adj, mode = "undirected", weighted = TRUE, diag = FALSE)
+  
+  # Perform Louvain community detection
+  lc <- cluster_louvain(g)
+  
+  # Record the number of communities and the modularity
+  results$num_communities[i] <- length(lc)
+  results$modularity[i] <- modularity(lc, weights = E(g)$weight)
+}
+
+# Print the results
+print(results)
+
+# Create two visual plots using ggplot2:
+# Plot 1: Number of Communities vs. Correlation Threshold
+p1 <- ggplot(results, aes(x = threshold, y = num_communities)) +
+  geom_line(color = "blue", size = 1) +
+  geom_point(color = "blue", size = 3) +
+  labs(title = "Number of Communities vs. Correlation Threshold",
+       x = "Correlation Threshold", y = "Number of Communities") +
+  theme_minimal()
+
+# Plot 2: Modularity vs. Correlation Threshold
+p2 <- ggplot(results, aes(x = threshold, y = modularity)) +
+  geom_line(color = "darkgreen", size = 1) +
+  geom_point(color = "darkgreen", size = 3) +
+  labs(title = "Modularity vs. Correlation Threshold",
+       x = "Correlation Threshold", y = "Modularity") +
+  theme_minimal()
+
+# Arrange the two plots side-by-side
+grid.arrange(p1, p2, ncol = 2)
+
+##########################################
+# Louvain clustering performed for 0.91 - 0.95
+
+# 1. Compute the correlation matrix among patients
+patient_corr <- cor(t(PCA_ready_data), use = "pairwise.complete.obs")
+
+# 2. Define thresholds from 0.91 to 0.95 (increments of 0.01)
+thresholds <- seq(0.91, 0.95, by = 0.01)
+
+# 3. Prepare a data frame to store the number of communities & modularity
+results <- data.frame(threshold = thresholds,
+                      num_communities = NA,
+                      modularity = NA)
+
+# 4. Combine Oxford, UCL, and UHB into one group "BioAID"; keep "Controls" separate
+combined_groups <- ifelse(as.character(group_labels) == "Controls", 
+                          "Controls", 
+                          "BioAID")
+
+# 5. Perform Louvain clustering at each threshold
+louvain_tables <- list()  # to store the "Community vs. Combined Groups" tables
+
+for(i in seq_along(thresholds)) {
+  th <- thresholds[i]
+  
+  # Create an adjacency matrix for this threshold
+  adjacency <- patient_corr
+  adjacency[adjacency < th] <- 0
+  
+  # Build the graph
+  g <- graph_from_adjacency_matrix(adjacency, mode = "undirected", 
+                                   weighted = TRUE, diag = FALSE)
+  
+  # Perform Louvain community detection
+  louvain_result <- cluster_louvain(g)
+  
+  # Record the number of communities & modularity
+  results$num_communities[i] <- length(louvain_result)
+  results$modularity[i] <- modularity(louvain_result, weights = E(g)$weight)
+  
+  # Compare each community to the combined groups (BioAID vs. Controls)
+  comm_vs_group <- table(
+    Community = membership(louvain_result),
+    Group = combined_groups
+  )
+  
+  # Store this table so we can look at it later
+  louvain_tables[[as.character(th)]] <- comm_vs_group
+  
+  # Print the table for clarity
+  cat("\n=================================================\n")
+  cat("Threshold =", th, "\n")
+  cat("Number of Communities:", length(louvain_result), "\n")
+  cat("Modularity:", results$modularity[i], "\n")
+  cat("\nCommunity vs. BioAID/Controls:\n")
+  print(comm_vs_group)
+}
+
+# 6. Visualize the Number of Communities and Modularity across thresholds
+p1 <- ggplot(results, aes(x = threshold, y = num_communities)) +
+  geom_line(color = "blue", size = 1) +
+  geom_point(color = "blue", size = 3) +
+  labs(title = "Number of Communities vs. Correlation Threshold",
+       x = "Correlation Threshold", y = "Number of Communities") +
+  theme_minimal()
+
+p2 <- ggplot(results, aes(x = threshold, y = modularity)) +
+  geom_line(color = "darkgreen", size = 1) +
+  geom_point(color = "darkgreen", size = 3) +
+  labs(title = "Modularity vs. Correlation Threshold",
+       x = "Correlation Threshold", y = "Modularity") +
+  theme_minimal()
+
+# Arrange both plots side by side
+grid.arrange(p1, p2, ncol = 2)
+
+###########################################################################
+# Deep dive analysis of 0.95 Louvain cluster
+library(igraph)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(ggrepel)
+library(pheatmap)
+
+# 1. Extract membership from Louvain clustering
+community_membership <- membership(louvain_result)
+
+# 2. Find the 3 largest communities
+comm_sizes <- table(community_membership)
+largest_3 <- names(sort(comm_sizes, decreasing = TRUE))[1:3]
+
+# 3. Subset your data and define a factor
+samples_in_largest_3 <- names(community_membership)[community_membership %in% largest_3]
+data_largest_3 <- PCA_ready_data[samples_in_largest_3, ]
+community_factor <- factor(community_membership[samples_in_largest_3], 
+                           levels = largest_3)
+
+# 4. ANOVA to find top discriminating genes
+pvals <- apply(
+  data_largest_3, 
+  2, 
+  function(gene_expr) {
+    fit <- aov(gene_expr ~ community_factor)
+    summary(fit)[[1]][["Pr(>F)"]][1]
+  }
+)
+pvals_adj <- p.adjust(pvals, method = "BH")
+sorted_genes <- names(sort(pvals_adj, decreasing = FALSE))
+top_genes <- head(sorted_genes, 50)
+
+# 5. Heatmap of top 50 genes
+top_genes_expr <- data_largest_3[, top_genes]
+top_genes_z <- t(scale(t(top_genes_expr)))  # row-wise z-scaling
+annotation_row <- data.frame(Community = community_factor)
+rownames(annotation_row) <- rownames(top_genes_z)
+
+pheatmap(
+  top_genes_z,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  annotation_row = annotation_row,
+  show_rownames = FALSE,
+  main = "Heatmap of Top 50 Genes Distinguishing the 3 Largest Communities"
+)
+
+# 6. PCA on top genes
+pca_top <- prcomp(top_genes_expr, center = TRUE, scale. = TRUE)
+pca_top_df <- data.frame(
+  PC1 = pca_top$x[,1],
+  PC2 = pca_top$x[,2],
+  Community = community_factor
+)
+
+ggplot(pca_top_df, aes(x = PC1, y = PC2, color = Community)) +
+  geom_point(size = 3) +
+  # geom_text_repel(aes(label = rownames(pca_top_df)), size = 3) + 
+  labs(
+    title = "PCA (Top Discriminating Genes) for 3 Largest Louvain Communities",
+    x = "PC1",
+    y = "PC2"
+  ) +
+  theme_pubr()
+
+##########################################################
+# K-Means Clustering Pipeline (Trial & Error: k = 4 to 8)
+##########################################################
+# 3. Remove Constant Columns (zero variance) to avoid NAs during scaling
+variances <- apply(PCA_ready_data, 2, var, na.rm = TRUE)
+PCA_ready_data_filtered <- PCA_ready_data[, variances > 0]
+
+# Optionally, remove rows with NA values (if any)
+PCA_ready_data_filtered <- na.omit(PCA_ready_data_filtered)
+
+# 4. Scale Data (recommended for K-means)
+scaled_data <- scale(PCA_ready_data_filtered)
+
+# Double-check for issues:
+if (sum(is.na(scaled_data)) > 0 || sum(is.infinite(scaled_data)) > 0) {
+  stop("Scaled data contains NA/Inf values. Please check your input data.")
+}
+
+# 5. Try K-Means from k = 2 to k = 8 (Trial & Error)
+set.seed(123)  # for reproducibility
+k_values <- 2:8
+wss_values <- numeric(length(k_values))  # store total within-cluster sum of squares
+
+for (i in seq_along(k_values)) {
+  k <- k_values[i]
+  km_out <- kmeans(scaled_data, centers = k, nstart = 25)
+  wss_values[i] <- km_out$tot.withinss
+}
+
+# 6. Plot Elbow Curve
+wss_df <- data.frame(k = k_values, wss = wss_values)
+elbow_plot <- ggplot(wss_df, aes(x = k, y = wss)) +
+  geom_line(color = "blue", size = 1) +
+  geom_point(color = "blue", size = 3) +
+  labs(
+    title = "Elbow Plot for K-Means Clustering (k = 2 to 8)",
+    x = "Number of Clusters (k)",
+    y = "Total Within-Cluster Sum of Squares"
+  ) +
+  theme_minimal()
+print(elbow_plot)
+
+##############################
+# Deep-dive analysis of K = 3 - 8
+
+# 1. Load Required Packages
+library(ggplot2)
+library(ggpubr)
+library(ggrepel)
+library(dplyr)
+library(pheatmap)
+library(scales)
+
+# 2. Assume 'PCA_ready_data' is your gene expression matrix 
+#    (Rows = samples, Columns = genes)
+#    Also assume 'group_labels' is a vector of sample group labels 
+#    (with values "Oxford", "UCL", "UHB", or "Controls") that aligns with the rownames of PCA_ready_data.
+
+# 3. Remove Constant Columns and Rows with NAs
+variances <- apply(PCA_ready_data, 2, var, na.rm = TRUE)
+PCA_ready_data_filtered <- PCA_ready_data[, variances > 0]
+PCA_ready_data_filtered <- na.omit(PCA_ready_data_filtered)
+
+# 4. Scale Data (recommended for K-means)
+scaled_data <- scale(PCA_ready_data_filtered)
+
+# Double-check scaled data for issues:
+if (sum(is.na(scaled_data)) > 0 || sum(is.infinite(scaled_data)) > 0) {
+  stop("Scaled data contains NA/Inf values. Please check your input data.")
+}
+
+# 5. Define the Combined Group:
+#    BioAID is an amalgamation of Oxford, UCL, and UHB. Controls remain separate.
+combined_group <- ifelse(group_labels == "Controls", "Controls", "BioAID")
+combined_group <- factor(combined_group, levels = c("Controls", "BioAID"))
+
+# 6. Run K-Means for k = 3 to 8 and store results for comparison
+plot_data_list <- list()
+
+for (k in 3:8) {
+  set.seed(123)  # for reproducibility
+  km_out <- kmeans(scaled_data, centers = k, nstart = 25)
+  clusters <- km_out$cluster
+  
+  # Create and print a contingency table: Cluster vs. Combined Group
+  cont_tab <- table(Cluster = clusters, Group = combined_group)
+  cat("\n---------------------\n")
+  cat("K =", k, "\n")
+  print(cont_tab)
+  
+  # Build a data frame with sample-level info for plotting
+  df_plot <- data.frame(
+    Sample = rownames(scaled_data),
+    Cluster = factor(clusters),
+    Group = combined_group,
+    k = paste0("k=", k)
+  )
+  
+  plot_data_list[[as.character(k)]] <- df_plot
+}
+
+# Combine the data frames for all k values
+all_plot_data <- do.call(rbind, plot_data_list)
+
+# 7. Create a Faceted Bar Plot (stacked percentages) to compare cluster composition
+bar_plot <- ggplot(all_plot_data, aes(x = Cluster, fill = Group)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = percent) +
+  labs(
+    title = "Cluster Composition (Controls vs. BioAID) for k = 3 to 8",
+    x = "K-Means Cluster",
+    y = "Percentage of Samples",
+    fill = "Group"
+  ) +
+  facet_wrap(~ k, nrow = 2) +
+  theme_minimal()
+
+print(bar_plot)
+
+
+
