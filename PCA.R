@@ -22,7 +22,7 @@ cat("PC1 =", pc1_equation, "\n")
 ################################################################################
 
 # Sort patients into groups based on sample IDs
-sample_ids <- rownames(PCA_ready_data)
+sample_ids <- rownames(gene_data)
 group_labels <- case_when(
   grepl("^(OX|ox)", sample_ids) ~ "Oxford",
   grepl("^UP", sample_ids) ~ "UCL",
@@ -35,7 +35,7 @@ group_labels <- factor(group_labels, levels = c("Oxford", "UCL", "UHB", "Control
 
 # Visualise PCA using a PCA plot
 plot_data <- data.frame(group_labels = group_labels)
-rownames(plot_data) <- rownames(PCA_ready_data)
+rownames(plot_data) <- rownames(gene_data)
 
 pca_plot <- autoplot(
   pca_result,
