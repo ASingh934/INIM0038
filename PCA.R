@@ -21,19 +21,21 @@ cat("PC1 =", pc1_equation, "\n")
 
 ################################################################################
 
-# Sort patients into groups based on sample IDs
+# Sort patients into groups: Merge Oxford, UCL, and UHB into BioAID
 sample_ids <- rownames(gene_data)
 group_labels <- case_when(
-  grepl("^(OX|ox)", sample_ids) ~ "Oxford",
-  grepl("^UP", sample_ids) ~ "UCL",
-  grepl("^(667|X)", sample_ids) ~ "UHB",
+  grepl("^(OX|ox)", sample_ids) ~ "BioAID",
+  grepl("^UP", sample_ids) ~ "BioAID",
+  grepl("^(667|X)", sample_ids) ~ "BioAID",
   grepl("^WH0", sample_ids) ~ "Controls"
 )
-group_labels <- factor(group_labels, levels = c("Oxford", "UCL", "UHB", "Controls"))
+
+# Convert to factor with correct order
+group_labels <- factor(group_labels, levels = c("BioAID", "Controls"))
 
 ################################################################################
 
-# Visualise PCA using a PCA plot
+# Visualise PCA using a PCA plot with only 2 colors
 plot_data <- data.frame(group_labels = group_labels)
 rownames(plot_data) <- rownames(gene_data)
 
@@ -41,26 +43,26 @@ pca_plot <- autoplot(
   pca_result,
   data = plot_data,
   colour = "group_labels",
-  size = 1,
+  size = 3,
   shape = 16
 ) +
   scale_color_manual(values = c(
-    "Oxford"   = "blue", 
-    "UCL"      = "red", 
-    "UHB"      = "green", 
-    "Controls" = "purple"
+    "BioAID"   = "red", 
+    "Controls" = "blue"
   )) +
   guides(color = guide_legend(override.aes = list(size = 5))) +
-  labs(title = "PCA of Gene Expression Data", color = "Group") +
+  labs(title = "PCA of Gene Expression Data (BioAID vs Controls)", color = "Group") +
   theme_pubr()
 
+# Print the updated PCA plot
 print(pca_plot)
 
 ###############################################################################
 
 # Scree plot to visualise the variance captured by the first 50 PCs
 explained_variance <- pca_result$sdev^2 / sum(pca_result$sdev^2)
-scree_data <- data.frame(PC = 1:length(explained_variance), Variance = explained_variance)
+scree_data <- data.frame(PC = 1:
+                         length(explained_variance), Variance = explained_variance)
 scree_data_50 <- scree_data[1:50, ]
 
 scree_plot <- ggplot(scree_data_50, aes(x = PC, y = Variance)) +
