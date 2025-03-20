@@ -31,7 +31,7 @@ colnames(gene_data) <- new_headers
 gene_data[] <- lapply(gene_data, function(x) as.numeric(as.character(x)))
 
 ##############################################################################
-
+                      
 # Filter out non-protein coding genes
 
 # Import the csv file containing gene symbols and their biotype
@@ -45,3 +45,17 @@ valid_genes <- annotated_data %>%
 
 # Keep only columns in gene_data that match the valid gene names
 gene_data <- gene_data %>% select(all_of(intersect(names(gene_data), valid_genes)))
+
+################################################################################
+# Sort patients into groups: Merge Oxford, UCL, and UHB into BioAID
+##############################################################################
+sample_ids <- rownames(gene_data)
+group_labels <- case_when(
+  grepl("^(OX|ox)", sample_ids) ~ "BioAID",
+  grepl("^UP", sample_ids) ~ "BioAID",
+  grepl("^(667|X)", sample_ids) ~ "BioAID",
+  grepl("^WH0", sample_ids) ~ "Controls"
+)
+
+# Convert to factor with correct order
+group_labels <- factor(group_labels, levels = c("BioAID", "Controls"))
