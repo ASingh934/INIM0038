@@ -21,20 +21,6 @@ pc1_equation <- paste0(round(top_50_loadings, 4), " * ", names(top_50_loadings),
 cat("\nPC1 is expressed as:\n")
 cat("PC1 =", pc1_equation, "\n")
 
-################################################################################
-# Sort patients into groups: Merge Oxford, UCL, and UHB into BioAID
-##############################################################################
-sample_ids <- rownames(gene_data)
-group_labels <- case_when(
-  grepl("^(OX|ox)", sample_ids) ~ "BioAID",
-  grepl("^UP", sample_ids) ~ "BioAID",
-  grepl("^(667|X)", sample_ids) ~ "BioAID",
-  grepl("^WH0", sample_ids) ~ "Controls"
-)
-
-# Convert to factor with correct order
-group_labels <- factor(group_labels, levels = c("BioAID", "Controls"))
-
 ###############################################################################
 # First PCA plot with patients grouped according to whether they are BioAID or Control
 # All patients are plotted here
