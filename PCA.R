@@ -52,35 +52,81 @@ print(pca_plot)
 # Second PCA plot with patients grouped according to clinical labels
 # IN this plot, patients whose clinical data aren't available are not plotted
 ###############################################################################
+library(stringr)
 
-# Calculate percentage variance explained for PC1 and PC2
-explained_variance <- pca_result$sdev^2 / sum(pca_result$sdev^2)
-pc1_percent <- round(explained_variance[1] * 100, 2)
-pc2_percent <- round(explained_variance[2] * 100, 2)
+# Create a new column in clinical_data: matched_id
+clinical_data <- clinical_data %>%
+  mutate(matched_id = case_when(
+    # For UP entries: use the UIN directly, except UP3447 becomes "UP3447" 
+    grepl("^UP", UIN) ~ if_else(UIN == "UP3447", "UP3447", UIN),
+    # For OX entries (case-insensitive): remove special characters so "OX-10411" becomes "OX10411"
+    grepl("^(OX|ox)", UIN) ~ gsub("[^A-Za-z0-9]", "", UIN),
+    TRUE ~ NA_character_
+  ))
 
-# Create the PCA plot using only patients with clinical data,
-# coloring points based on their micro_diagnosis and updating axis labels accordingly
-p <- ggplot(pca_data_clinical, aes(x = PC1, y = PC2, color = micro_diagnosis)) +
-  geom_point(size = 3, shape = 16) +
-  scale_color_manual(
-    name = "Micro Diagnosis",
-    values = c(
-      "Bacterial"         = "red",
-      "Viral"             = "blue",
-      "None"              = "green",
-      "Bacterial & Viral" = "purple"
-    )
-  ) +
-  labs(
-    title = "PCA of Gene Expression Data with Clinical Grouping",
-    x = paste0("PC1 (", pc1_percent, "%)"),
-    y = paste0("PC2 (", pc2_percent, "%)")
-  ) +
+# --- Step 2: Process gene_data row names ---
+# Create a data frame of gene_data row names
+gene_ids <- data.frame(original_id = rownames(gene_data), stringsAsFactors = FALSE)
+
+# Clean gene_data row names similar to clinical_data
+gene_ids <- gene_ids %>%
+  mutate(cleaned_id = case_when(
+    # For OX entries, remove any non-alphanumeric characters (e.g. "OX.10411" becomes "OX10411")
+    grepl("^(OX|ox)", original_id) ~ gsub("[^A-Za-z0-9]", "", original_id),
+    # For UP entries: if the row name is "UP.3447", remove the dot to match clinical "UP3447"
+    original_id == "UP.3447" ~ "UP3447",
+    # Otherwise, use the row name as is (e.g., "UP3071")
+    TRUE ~ original_id
+  ))
+
+# --- Step 3: Identify matching patients ---
+# Filter clinical_data to keep only rows with valid matched_id (UP or OX type)
+clinical_match <- clinical_data %>% filter(!is.na(matched_id))
+
+# Find the intersection of cleaned gene IDs and clinical matched IDs
+common_ids <- intersect(gene_ids$cleaned_id, clinical_match$matched_id)
+
+# Get the original gene_data row names corresponding to these common IDs
+matched_patient_ids <- gene_ids$original_id[gene_ids$cleaned_id %in% common_ids]
+
+# Subset gene_data for matched patients
+matched_patients <- gene_data[matched_patient_ids, ]
+cat("matched_patients dataframe has been created with", nrow(matched_patients), "patients.\n")
+
+# --- Step 4: Prepare plotting information ---
+# Merge gene_ids with clinical_match to get micro_diagnosis info
+plot_info <- gene_ids %>%
+  filter(original_id %in% matched_patient_ids) %>%
+  left_join(clinical_match, by = c("cleaned_id" = "matched_id"))
+
+# Ensure the row names of plot_info match those in gene_data
+rownames(plot_info) <- plot_info$original_id
+
+# --- Step 5: Subset PCA results to matched patients ---
+# Assume pca_result was computed on the full gene_data earlier:
+# pca_result <- prcomp(gene_data, center = TRUE, scale. = FALSE)
+
+# Subset the PCA scores to only include matched patients
+pca_result_matched <- pca_result
+pca_result_matched$x <- pca_result$x[matched_patient_ids, ]
+
+# --- Step 6: Create the PCA plot using autoplot ---
+# Define color mapping based on micro_diagnosis:
+color_mapping <- c("None" = "blue", 
+                   "Bacterial" = "red", 
+                   "Viral" = "green", 
+                   "Bacterial & Viral" = "black")
+
+pca_plot_matched <- autoplot(pca_result_matched, data = plot_info,
+                             colour = "micro_diagnosis", size = 3, shape = 16) +
+  scale_color_manual(values = color_mapping) +
+  guides(color = guide_legend(override.aes = list(size = 5))) +
+  labs(title = "PCA Plot for Matched Patients by Clinical micro_diagnosis",
+       color = "micro_diagnosis") +
   theme_pubr()
 
-# Print the updated PCA plot with clinical grouping
-print(p)
-
+# Display the PCA plot
+print(pca_plot_matched)
 ################################################################################
 # Produce a scree plot 
 ###############################################################################
