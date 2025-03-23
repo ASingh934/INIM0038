@@ -1,4 +1,8 @@
-##############################
+####################################################################################
+
+# BOX PLOTS
+
+####################################################################################
 # Step 1: Select the relevant genes and reshape to long format
 ##############################
 # Subset gene_data to include only IFI27, MX1, and IFI44L
@@ -90,3 +94,76 @@ box_plot_matched <- ggplot(gene_long_matched, aes(x = Group, y = Expression_z)) 
 
 # Display the plot
 print(box_plot_matched)
+
+####################################################################################
+
+# HISTOGRAM AND DENSITY PLOTS
+
+####################################################################################
+
+# First, filter the micro-diagnosis data to remove the "Bacterial & Viral" group
+gene_long_micro_filtered <- gene_long_matched %>%
+  filter(fill_group != "Bacterial & Viral")
+
+# Update the color mapping to remove the "Bacterial & Viral" key
+color_mapping_micro <- c("Controls" = "royalblue",
+                         "None" = "blue", 
+                         "Bacterial" = "red", 
+                         "Viral" = "green")
+
+# ---------------------------
+# Overall Group Plots (unchanged)
+# ---------------------------
+
+# Histogram: Overall Group (BioAID vs Controls)
+histogram_overall <- ggplot(gene_long_matched, aes(x = Expression_z, fill = Group)) +
+  geom_histogram(position = "dodge", bins = 15, color = "black", alpha = 0.7) +
+  facet_wrap(~ Gene, scales = "free_y") +
+  scale_fill_manual(values = c("Controls" = "royalblue", "BioAID" = "tomato")) +
+  labs(title = "Histogram of ISG Expression Z-Scores by Group",
+       x = "Expression Z-Score",
+       y = "Count") +
+  theme_pubr()
+
+print(histogram_overall)
+
+# Density Plot: Overall Group (BioAID vs Controls)
+density_overall <- ggplot(gene_long_matched, aes(x = Expression_z, fill = Group)) +
+  geom_density(alpha = 0.7, color = "black") +
+  facet_wrap(~ Gene, scales = "free_y") +
+  scale_fill_manual(values = c("Controls" = "royalblue", "BioAID" = "tomato")) +
+  labs(title = "Density Plot of ISG Expression Z-Scores by Group",
+       x = "Expression Z-Score",
+       y = "Density") +
+  theme_pubr()
+
+print(density_overall)
+
+# ---------------------------
+# Micro_diagnosis Plots (with "Bacterial & Viral" removed)
+# ---------------------------
+
+# Histogram: micro_diagnosis (with Controls unchanged)
+histogram_micro <- ggplot(gene_long_micro_filtered, aes(x = Expression_z, fill = fill_group)) +
+  geom_histogram(position = "dodge", bins = 15, color = "black", alpha = 0.7) +
+  facet_wrap(~ Gene, scales = "free_y") +
+  scale_fill_manual(values = color_mapping_micro) +
+  labs(title = "Histogram of ISG Expression Z-Scores by micro_diagnosis",
+       x = "Expression Z-Score",
+       y = "Count") +
+  theme_pubr()
+
+print(histogram_micro)
+
+# Density Plot: micro_diagnosis (with Controls unchanged)
+density_micro <- ggplot(gene_long_micro_filtered, aes(x = Expression_z, fill = fill_group)) +
+  geom_density(alpha = 0.7, color = "black") +
+  facet_wrap(~ Gene, scales = "free_y") +
+  scale_fill_manual(values = color_mapping_micro) +
+  labs(title = "Density Plot of ISG Expression Z-Scores by micro_diagnosis",
+       x = "Expression Z-Score",
+       y = "Density") +
+  theme_pubr()
+
+print(density_micro)
+
