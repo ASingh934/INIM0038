@@ -1,0 +1,33 @@
+MX1, IFI27 and IFI44L are **Interferon-Stimulated Genes (ISGs)**, whose expression is upregulated in response to 
+_Type I interferons_ produced during viral infections. We will anayse the gene expression data of each patient, focusing
+on these 3 ISGs in particular.
+
+We first extract the gene expression data of each control. We assume that all controls do NOT have an ARI, and therefore
+there is no upregulation in the expression of their ISGs. Therefore, the mean and standard deviation of their expression
+values for MX1, IFI27 and IFI44L are calculated. This serves as the basis for calculating the Z-scores for each gene 
+(biomarker).
+
+We can now standardize every patient's gene expression values using the mean and standard deviation.
+For example, if the mean expression of MX1 in controls is **MX1_μ** and the standard deviation is **MX1_σ**, we plug in
+every patient's gene expression value (**MX1_Value**) for MX1 into the following equation:
+
+**Z-score for MX1 = ( MX1_Value - MX1_μ ) / MX1_σ**
+
+We plotted all of these patients on a box plot, for each of these 3 genes. The patients were categorised into 2 groups:
+controls (who served as the basis for Z score calculations), and the BioAID patients.
+
+![image](https://github.com/user-attachments/assets/6eb92386-05fa-487f-8fca-066649955e26)
+
+The mean Z score for all the controls for each gene was 0.
+**NOTE**: The central line of the box plot represents the median, not the mean.
+
+Now, using the Biomarker papers I read, we assume that the threshold for a signficantly increased expression of the ISGs
+is |Z| > 2. So, we hypothesize that for BioAID patients whose gene expression value exceeds 2 i.e. Z > 2, they will have
+a viral infection. Testing this out. I then incorporate the clinical labels for the BioAID patients. Some BioAID patients do 
+not have clinical labels, so they are removed from the Boxplots, but for that do, they are subdivided into 4 categories.
+Their box-plots are shown here.
+
+![image](https://github.com/user-attachments/assets/ea45f909-4d81-46ca-854e-96d92a06fbfb)
+
+We can clearly see that the biomarker Z scores for BioAID patients with viral ARIs are elevated when compared to those
+without viral ARIs.
