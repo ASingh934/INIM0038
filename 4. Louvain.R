@@ -1,86 +1,75 @@
-# ---------------------------------------------------------------
-# NEW CODE: Louvain clustering over varying PCC thresholds & resolution multipliers
-# ---------------------------------------------------------------
-set.seed(123)  # For reproducibility
+# Ensure rownames in matched_patients align with plot_info
+matched_expression <- matched_patients[rownames(plot_info), ]
 
-# Use the matched_patients and plot_info data frames already created in your code.
-# matched_patients: gene expression data for patients present in both datasets.
-# plot_info: clinical data (with rownames as the original patient IDs) containing micro_diagnosis.
+# Extract micro_diagnosis for each patient
+micro_diag_map <- plot_info %>%
+  select(original_id, micro_diagnosis) %>%
+  deframe()
 
-n_patients <- nrow(matched_patients)
-sample_size <- floor(0.8 * n_patients)
+# Function to parse micro_diagnosis
+parse_diagnosis <- function(x) {
+  if (is.na(x)) return(character(0))
+  x <- gsub(" ", "", x)
+  unlist(strsplit(x, "&"))
+}
 
-# Randomly sample 80% of the matched patients
-sampled_ids <- sample(rownames(matched_patients), size = sample_size)
-sampled_data <- matched_patients[sampled_ids, ]
-
-# Define the PCC thresholds and resolution multipliers
-pcc_thresholds <- c(0.85, 0.9, 0.95, 0.96, 0.97, 0.98, 0.99)
-resolution_multipliers <- seq(0, 1, by = 0.1)
-
-# Loop over each combination of threshold and resolution multiplier
-for (thresh in pcc_thresholds) {
-  for (res in resolution_multipliers) {
-    cat("------------------------------------------------------\n")
-    cat("PCC Threshold:", thresh, "| Resolution multiplier:", res, "\n")
+# Main loop over PCC and resolution thresholds
+for (pcc_threshold in c(0.91, 0.92, 0.93, 0.94, 0.95)) {
+  for (resolution in seq(0.1, 1.0, 0.1)) {
     
-    # Compute the Pearson correlation matrix between patients.
-    # Since rows are patients and columns are genes, we compute correlation on the transpose.
-    corr_matrix <- cor(t(sampled_data), method = "pearson")
+    # Compute correlation matrix
+    corr_matrix <- cor(t(matched_expression), method = "pearson")
+    corr_matrix[is.na(corr_matrix)] <- 0  # Replace NAs
     
-    # Threshold the matrix: set values below the threshold to 0.
-    corr_matrix[corr_matrix < thresh] <- 0
+    # Threshold the correlation matrix to create adjacency matrix
+    adj_matrix <- corr_matrix
+    adj_matrix[abs(adj_matrix) < pcc_threshold] <- 0
+    diag(adj_matrix) <- 0
     
-    # Remove self-loops by zeroing the diagonal.
-    diag(corr_matrix) <- 0
+    # Create graph from adjacency matrix
+    g <- graph_from_adjacency_matrix(adj_matrix, mode = "undirected", weighted = TRUE, diag = FALSE)
     
-    # Apply the resolution multiplier to simulate a resolution effect on the edge weights.
-    weighted_matrix <- corr_matrix * res
+    # Apply Louvain clustering with multilevel.community + resolution scaling
+    cluster_result <- cluster_louvain(g)
     
-    # Create an undirected weighted graph using the weighted matrix.
-    # Only nonzero edges will be included; vertex names come from the rownames of sampled_data.
-    g <- graph.adjacency(weighted_matrix, mode = "undirected", weighted = TRUE, diag = FALSE)
+    # Get communities
+    community_list <- split(names(membership(cluster_result)), membership(cluster_result))
     
-    # Remove isolated nodes (if any)
-    g <- delete.vertices(g, which(degree(g) == 0))
+    # Filter out communities with <5 patients
+    community_list <- community_list[sapply(community_list, length) > 4]
     
-    # If the graph is empty for this combination, skip to the next iteration.
-    if (vcount(g) == 0) {
-      cat("Graph is empty for this combination. Skipping...\n")
-      next
+    
+    for (i in seq_along(community_list)) {
+      community <- community_list[[i]]
+      diagnoses <- unlist(lapply(micro_diag_map[community], parse_diagnosis))
+      diagnosis_counts <- sort(table(diagnoses), decreasing = TRUE)
     }
-    
-    # Perform Louvain clustering using the edge weights.
-    louvain_result <- cluster_louvain(g, weights = E(g)$weight)
-    total_communities <- length(louvain_result)
-    cat("Total communities detected:", total_communities, "\n")
-    
-    # Get the sizes of each community.
-    comm_sizes <- sizes(louvain_result)
-    
-    # Identify the three largest communities by size.
-    top3_ids <- names(sort(comm_sizes, decreasing = TRUE))[1:3]
-    
-    # For each of the top 3 communities, print out the community size and the micro_diagnosis breakdown.
-    for (i in seq_along(top3_ids)) {
-      comm_id <- top3_ids[i]
-      
-      # membership() returns a named vector where names are patient IDs (from matched_patients) 
-      # and values are community IDs.
-      members <- names(membership(louvain_result))[membership(louvain_result) == as.numeric(comm_id)]
-      
-      # Use plot_info to extract clinical micro_diagnosis for the members.
-      # (Since plot_info rownames were set to the original IDs, they should match the vertex names.)
-      diag_info <- plot_info[members, "micro_diagnosis", drop = FALSE]
-      
-      # Create a table for the micro_diagnosis breakdown (Viral, Bacterial, None, etc.)
-      diag_table <- table(diag_info$micro_diagnosis, useNA = "ifany")
-      
-      cat("\nTop community", i, "(Community ID:", comm_id, 
-          "- Size:", comm_sizes[comm_id], ")\n")
-      print(diag_table)
-    }
-    
-    cat("------------------------------------------------------\n\n")
   }
 }
+
+# Plot 1: % of nodes captured in communities > 4
+plot_percent <- ggplot(purity_summary, aes(x = Resolution, y = Percent_Captured, group = PCC, color = as.factor(PCC))) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) +
+  labs(
+    title = "% of Nodes in Communities > 4",
+    x = "Resolution",
+    y = "% of Nodes Captured",
+    color = "PCC Threshold"
+  ) +
+  theme_minimal()
+
+# Plot 2: Weighted Purity of Louvain Clusters
+plot_purity <- ggplot(purity_summary, aes(x = Resolution, y = Weighted_Purity, group = PCC, color = as.factor(PCC))) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) +
+  labs(
+    title = "Weighted Purity of Louvain Clusters",
+    x = "Resolution",
+    y = "Weighted Purity",
+    color = "PCC Threshold"
+  ) +
+  theme_minimal()
+
+# Print side by side
+grid.arrange(plot_percent, plot_purity, ncol = 2)
