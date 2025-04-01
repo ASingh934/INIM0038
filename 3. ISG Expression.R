@@ -28,32 +28,35 @@ gene_long <- gene_long %>%
 ##############################
 # Step 3: Compute the z‑scores for each gene using only Controls as the reference
 ##############################
-# First, define a helper function to compute z-scores excluding upper outliers
-compute_z_scores_iqr <- function(df) {
+# Define a helper function to exclude outlier Controls and compute z-scores
+filter_and_zscore <- function(df) {
   df %>%
     group_by(Gene) %>%
     mutate(
-      # Get expression values for Controls only
-      control_values = list(Expression[Group == "Controls"]),
-      # Compute Q1, Q3, IQR and threshold
-      Q1 = quantile(control_values[[1]], 0.25, na.rm = TRUE),
-      Q3 = quantile(control_values[[1]], 0.75, na.rm = TRUE),
+      # Expression values for Controls
+      control_vals = Expression[Group == "Controls"],
+      Q1 = quantile(control_vals, 0.25, na.rm = TRUE),
+      Q3 = quantile(control_vals, 0.75, na.rm = TRUE),
       IQR_val = Q3 - Q1,
       upper_thresh = Q3 + 1.5 * IQR_val,
-      # Filter values below threshold and compute mean/sd
-      filtered_values = list(control_values[[1]][control_values[[1]] < upper_thresh]),
-      mean_control = mean(filtered_values[[1]], na.rm = TRUE),
-      sd_control = sd(filtered_values[[1]], na.rm = TRUE),
-      # Compute z-score using filtered mean/sd
+      # Boolean: is outlier Control?
+      is_outlier_control = Group == "Controls" & Expression > upper_thresh,
+      # Exclude outliers from z-score calculation
+      filtered_controls = list(control_vals[control_vals <= upper_thresh]),
+      mean_control = mean(filtered_controls[[1]], na.rm = TRUE),
+      sd_control = sd(filtered_controls[[1]], na.rm = TRUE),
+      # Compute z-score
       Expression_z = (Expression - mean_control) / sd_control
     ) %>%
+    # Remove outlier Controls entirely
+    filter(!(is_outlier_control)) %>%
     ungroup() %>%
-    select(-control_values, -Q1, -Q3, -IQR_val, -upper_thresh, -filtered_values, -mean_control, -sd_control)
+    select(-control_vals, -Q1, -Q3, -IQR_val, -upper_thresh,
+           -filtered_controls, -mean_control, -sd_control, -is_outlier_control)
 }
 
-# Apply the new z-score computation to gene_long
-gene_long <- compute_z_scores_iqr(gene_long)
-
+# Apply updated filtering and z-scoring
+gene_long <- filter_and_zscore(gene_long)
 ##############################
 # Step 4: Create a facetted box plot for IFI27, MX1, and IFI44L
 ##############################
