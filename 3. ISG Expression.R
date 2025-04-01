@@ -28,34 +28,39 @@ gene_long <- gene_long %>%
 ##############################
 # Step 3: Compute the z‑scores for each gene using only Controls as the reference
 ##############################
-# Define a helper function to exclude outlier Controls and compute z-scores
+# Function to filter Controls and compute z-scores per gene
 filter_and_zscore <- function(df) {
   df %>%
     group_by(Gene) %>%
-    mutate(
-      # Expression values for Controls
-      control_vals = Expression[Group == "Controls"],
-      Q1 = quantile(control_vals, 0.25, na.rm = TRUE),
-      Q3 = quantile(control_vals, 0.75, na.rm = TRUE),
-      IQR_val = Q3 - Q1,
-      upper_thresh = Q3 + 1.5 * IQR_val,
-      # Boolean: is outlier Control?
-      is_outlier_control = Group == "Controls" & Expression > upper_thresh,
-      # Exclude outliers from z-score calculation
-      filtered_controls = list(control_vals[control_vals <= upper_thresh]),
-      mean_control = mean(filtered_controls[[1]], na.rm = TRUE),
-      sd_control = sd(filtered_controls[[1]], na.rm = TRUE),
-      # Compute z-score
-      Expression_z = (Expression - mean_control) / sd_control
-    ) %>%
-    # Remove outlier Controls entirely
-    filter(!(is_outlier_control)) %>%
-    ungroup() %>%
-    select(-control_vals, -Q1, -Q3, -IQR_val, -upper_thresh,
-           -filtered_controls, -mean_control, -sd_control, -is_outlier_control)
+    group_modify(~ {
+      gene_df <- .
+      control_df <- gene_df %>% filter(Group == "Controls")
+      
+      # Calculate IQR and threshold
+      Q1 <- quantile(control_df$Expression, 0.25, na.rm = TRUE)
+      Q3 <- quantile(control_df$Expression, 0.75, na.rm = TRUE)
+      IQR_val <- Q3 - Q1
+      upper_thresh <- Q3 + 1.5 * IQR_val
+      
+      # Filter non-outlier controls
+      filtered_controls <- control_df %>% filter(Expression <= upper_thresh)
+      
+      # Compute mean and sd from filtered Controls
+      mean_val <- mean(filtered_controls$Expression, na.rm = TRUE)
+      sd_val <- sd(filtered_controls$Expression, na.rm = TRUE)
+      
+      # Compute z-score for everyone in this gene group
+      gene_df <- gene_df %>%
+        mutate(Expression_z = (Expression - mean_val) / sd_val)
+      
+      # Exclude outlier Controls from the output
+      gene_df %>%
+        filter(!(Group == "Controls" & Expression > upper_thresh))
+    }) %>%
+    ungroup()
 }
 
-# Apply updated filtering and z-scoring
+# Apply the filtering and z-score calculation
 gene_long <- filter_and_zscore(gene_long)
 ##############################
 # Step 4: Create a facetted box plot for IFI27, MX1, and IFI44L
