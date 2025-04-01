@@ -166,3 +166,51 @@ density_micro <- ggplot(gene_long_micro_filtered, aes(x = Expression_z, fill = f
   theme_pubr()
 
 print(density_micro)
+
+#########################################################################
+
+# AUROC for each ISG in differentiating between Viral vs Non-Viral cases
+
+#########################################################################
+# Prepare data: binary Viral label
+roc_data <- gene_long_matched %>%
+  mutate(
+    Viral_binary = if_else(micro_diagnosis == "Viral", 1, 0)
+  ) %>%
+  filter(Gene %in% c("IFI27", "MX1", "IFI44L"))
+
+# Create ROC objects and extract data for plotting
+roc_list <- list()
+roc_plot_data <- data.frame()
+
+for (gene in c("IFI27", "MX1", "IFI44L")) {
+  gene_df <- roc_data %>% filter(Gene == gene)
+  roc_obj <- roc(gene_df$Viral_binary, gene_df$Expression_z, direction = "<", quiet = TRUE)
+  
+  # Store the AUC
+  auc_val <- round(auc(roc_obj), 3)
+  
+  # Extract plot data from roc object
+  coords_df <- data.frame(
+    FPR = 1 - roc_obj$specificities,
+    TPR = roc_obj$sensitivities,
+    Gene = paste0(gene, " (AUC = ", auc_val, ")")
+  )
+  
+  roc_plot_data <- rbind(roc_plot_data, coords_df)
+}
+
+# Plot all ROC curves together
+roc_plot <- ggplot(roc_plot_data, aes(x = FPR, y = TPR, color = Gene)) +
+  geom_line(size = 1.2) +
+  geom_abline(linetype = "dashed", color = "gray50") +
+  theme_pubr() +
+  labs(
+    title = "ROC Curves for IFI27, MX1, and IFI44L",
+    x = "False Positive Rate (1 - Specificity)",
+    y = "True Positive Rate (Sensitivity)",
+    color = "Gene"
+  ) +
+  theme(legend.position = "bottom")
+
+print(roc_plot)
