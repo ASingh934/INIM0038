@@ -240,7 +240,7 @@ print(plot3)
 eval_df <- kappa_results %>%
   inner_join(wp_df, by = c("PCC_Threshold", "Resolution_Limit")) %>%
   inner_join(percent_df, by = c("PCC_Threshold", "Resolution_Limit")) %>%
-  filter(Percentage_Captured >= 75)
+  filter(Percentage_Captured >= 80)
 
 # Find max Kappa
 max_kappa <- max(eval_df$Kappa, na.rm = TRUE)
