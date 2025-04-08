@@ -22,6 +22,7 @@ library(limma)
 library(VennDiagram)
 library(caret)
 library(UpSetR)
+library(ComplexUpset)
 
 gene_data <- read.csv("C:/Users/ABSin/Downloads/BIOAID_tpm_PC0.001_log2_genesymbol_dedup (1).csv")
 clinical_data <- readRDS("C:/Users/ABSin/Downloads/BioAID_resp_master_v2_March25.rds")
