@@ -50,68 +50,166 @@ cat("Specificity:", round(specificity, 3), "\n")
 
 ################################################################################
 
-# Threshold
-adj_p_threshold <- 0.05
+# --- 1. Load Data ---
+# Assuming 'gene_data' (patients as rows, genes as columns, numeric) is still in your environment
+# Load the clustering results
+optimum_cluster <- read.csv("C:/Users/ABSin/Downloads/4. OptimumLeidenCluster.csv")
 
-# Store DEG counts and lists
-deg_counts <- data.frame()
-deg_details <- list()
+# --- 2. Match Samples between Gene Data and Cluster Data ---
 
-for (i in seq_along(contrast_names)) {
-  contrast_name <- contrast_names[i]
-  
-  # Get top table
-  results_table <- topTable(fit_ebayes, coef = i, number = Inf, sort.by = "P") %>%
-    rownames_to_column("Gene") %>%
-    filter(adj.P.Val < adj_p_threshold)
-  
-  # Upregulated: logFC > 0
-  upregulated <- results_table %>%
-    filter(logFC > 1) %>%
-    arrange(adj.P.Val) %>%
-    pull(Gene)
-  
-  # Downregulated: logFC < 0
-  downregulated <- results_table %>%
-    filter(logFC < -1) %>%
-    arrange(adj.P.Val) %>%
-    pull(Gene)
-  
-  # Store DEG counts
-  deg_counts <- rbind(deg_counts, data.frame(
-    Contrast = contrast_name,
-    Direction = "Upregulated",
-    Count = length(upregulated)
+# Create cleaned IDs for gene_data row names (reuse logic from previous steps)
+gene_ids_df <- data.frame(original_id = rownames(gene_data), stringsAsFactors = FALSE) %>%
+  mutate(cleaned_id = case_when(
+    grepl("^(OX|ox)", original_id) ~ gsub("[^A-Za-z0-9]", "", original_id),
+    original_id == "UP.3447" ~ "UP3447", # Specific case if needed based on your data
+    TRUE ~ original_id
   ))
-  
-  deg_counts <- rbind(deg_counts, data.frame(
-    Contrast = contrast_name,
-    Direction = "Downregulated",
-    Count = length(downregulated)
+
+# Create cleaned IDs for the cluster data patient_id
+optimum_cluster <- optimum_cluster %>%
+  mutate(cleaned_id = case_when(
+    grepl("^(OX|ox)", patient_id) ~ gsub("[^A-Za-z0-9]", "", patient_id),
+    patient_id == "UP3447" ~ "UP3447", # Match potential clinical data format
+    TRUE ~ patient_id
   ))
-  
-  # Store DEG lists
-  deg_details[[contrast_name]] <- list(
-    upregulated = upregulated,
-    downregulated = downregulated
-  )
-  
-  cat("Contrast:", contrast_name, "- Up:", length(upregulated), "Down:", length(downregulated), "\n")
+
+# Find common cleaned IDs
+common_cleaned_ids <- intersect(gene_ids_df$cleaned_id, optimum_cluster$cleaned_id)
+cat("Found", length(common_cleaned_ids), "common samples between gene expression data and cluster data.\n")
+
+# Filter cluster data to common samples and get original gene_data IDs
+cluster_info_matched <- optimum_cluster %>%
+  filter(cleaned_id %in% common_cleaned_ids) %>%
+  left_join(gene_ids_df, by = "cleaned_id") %>%
+  select(original_id, community, micro_diagnosis, cleaned_id) # Keep original_id for filtering gene_data
+
+# Filter gene_data to common samples
+# Ensure the order matches the cluster_info_matched dataframe
+gene_data_matched_cluster <- gene_data[cluster_info_matched$original_id, ]
+
+# --- 3. Prepare Data for Limma ---
+
+# Transpose gene data: genes as rows, samples as columns
+expr_matrix <- t(gene_data_matched_cluster)
+# Ensure it's numeric
+expr_matrix <- apply(expr_matrix, 2, as.numeric)
+rownames(expr_matrix) <- colnames(gene_data_matched_cluster) # Gene symbols
+colnames(expr_matrix) <- rownames(gene_data_matched_cluster) # Original sample IDs
+
+# Create the design matrix based on 'community'
+# Ensure community is treated as a factor
+cluster_info_matched$community <- factor(paste0("C", cluster_info_matched$community)) # Prepend "C" for clarity
+design <- model.matrix(~0 + community, data = cluster_info_matched)
+colnames(design) <- levels(cluster_info_matched$community) # Clean column names
+
+# Check dimensions
+print(dim(expr_matrix))
+print(dim(design))
+if (ncol(expr_matrix) != nrow(design)) {
+  stop("Mismatch between expression matrix columns and design matrix rows.")
 }
 
-# --- Bar Plot of DEG Counts ---
-ggplot(deg_counts, aes(x = Contrast, y = Count, fill = Direction)) +
-  geom_bar(stat = "identity", position = position_dodge(width = 0.8)) +
+# --- 4. Define Contrasts ---
+cont.matrix <- makeContrasts(
+  C1vsRest = C1 - (C2 + C3 + C4) / 3,
+  C2vsRest = C2 - (C1 + C3 + C4) / 3,
+  C3vsRest = C3 - (C1 + C2 + C4) / 3,
+  C4vsRest = C4 - (C1 + C2 + C3) / 3,
+  levels = design
+)
+
+print("Contrast Matrix:")
+print(cont.matrix)
+
+# --- 5. Run Limma ---
+fit <- lmFit(expr_matrix, design)
+fit_contrasts <- contrasts.fit(fit, contrasts = cont.matrix)
+fit_ebayes <- eBayes(fit_contrasts)
+
+# --- 6. Extract DEGs for each contrast (Revised Storage) ---
+
+# Define thresholds
+adj_p_threshold <- 0.05
+logfc_threshold <- 1.0
+
+# Initialize the main list to store all details
+deg_details <- list()
+# Initialize list to store summary counts for the plot
+deg_summary <- list()
+
+# Loop through each contrast
+contrast_names <- colnames(cont.matrix)
+
+for (contrast in contrast_names) {
+  cat("\nProcessing contrast:", contrast, "\n")
+  
+  # Extract results using topTable
+  res_table <- topTable(fit_ebayes, coef = contrast, adjust.method = "BH", number = Inf)
+  
+  # Filter based on adjusted p-value and logFC
+  up_genes <- res_table %>%
+    rownames_to_column("Gene") %>%
+    filter(adj.P.Val < adj_p_threshold & logFC > logfc_threshold) %>%
+    pull(Gene)
+  
+  down_genes <- res_table %>%
+    rownames_to_column("Gene") %>%
+    filter(adj.P.Val < adj_p_threshold & logFC < -logfc_threshold) %>%
+    pull(Gene)
+  
+  # Store the gene lists in the nested structure
+  deg_details[[contrast]] <- list(
+    upregulated = up_genes,
+    downregulated = down_genes
+  )
+  
+  # Store the counts for the summary plot
+  deg_summary[[contrast]] <- data.frame(
+    Contrast = contrast,
+    Upregulated = length(up_genes),
+    Downregulated = length(down_genes)
+  )
+  
+  cat("  Upregulated:", length(up_genes), "\n")
+  cat("  Downregulated:", length(down_genes), "\n")
+}
+
+# Combine summary counts into a single data frame
+summary_df <- bind_rows(deg_summary)
+
+print("\nSummary of DEGs:")
+print(summary_df)
+
+# --- 7. Visualize DEG Counts ---
+
+# Reshape data for ggplot
+plot_data <- summary_df %>%
+  pivot_longer(cols = c("Upregulated", "Downregulated"), names_to = "Direction", values_to = "Count") %>%
+  mutate(Direction = factor(Direction, levels = c("Upregulated", "Downregulated")))
+
+# Create the bar plot
+deg_barplot <- ggplot(plot_data, aes(x = Contrast, y = Count, fill = Direction)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
+  geom_text(aes(label = Count),
+            position = position_dodge(width = 0.8),
+            vjust = -0.3,
+            size = 3) +
+  scale_fill_manual(values = c("Upregulated" = "firebrick", "Downregulated" = "steelblue")) +
   labs(
-    title = "Differentially Expressed Genes by Contrast",
-    y = "Number of DEGs", x = "Contrast"
+    title = "Differentially Expressed Genes per Contrast",
+    subtitle = paste("Adjusted P-value <", adj_p_threshold, " & |LogFC| >", logfc_threshold),
+    x = "Contrast Comparison",
+    y = "Number of Genes",
+    fill = "Regulation"
   ) +
-  theme_minimal(base_size = 12) +
-  scale_fill_manual(values = c("Upregulated" = "steelblue", "Downregulated" = "firebrick")) +
+  theme_pubr() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-############################### Lists of DEGs ##################################
+# Print the plot
+print(deg_barplot)
 
+############################### Lists of DEGs ##################################
+print(deg_details$C1vsRest$upregulated)
 # deg_details$C1vsRest$upregulated - Genes upregulated in C1 compared to C2, C3, and C4
 # deg_details$C1vsRest$downregulated - Genes downregulated in C1 compared to the rest
 
