@@ -311,7 +311,7 @@ for (file in deg_files) {
   if (!is.null(plot_obj)) print(plot_obj)
 }
 
-
+#################### Heatmap #############################################
 
 # Ensure pheatmap and other necessary libraries are loaded
 # install.packages("pheatmap")
@@ -331,8 +331,7 @@ library(tibble)
 #                         to 'community' and 'micro_diagnosis'.
 # - cont.matrix: The contrast matrix used in limma.
 
-# Define the adjusted p-value threshold used previously
-adj_p_threshold <- 0.1
+adj_p_threshold <- 0.05
 
 # Iterate through each contrast defined in the limma analysis
 contrast_names <- colnames(cont.matrix)
@@ -423,4 +422,5 @@ for (contrast in contrast_names) {
 }
 
 cat("\nFinished generating heatmaps.\n")
+
 
