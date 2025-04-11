@@ -310,3 +310,117 @@ for (file in deg_files) {
   plot_obj <- plot_from_rds(file)
   if (!is.null(plot_obj)) print(plot_obj)
 }
+
+
+
+# Ensure pheatmap and other necessary libraries are loaded
+# install.packages("pheatmap")
+# install.packages("RColorBrewer")
+library(pheatmap)
+library(RColorBrewer)
+library(dplyr)
+library(tibble)
+
+# --- HEATMAP GENERATION ---
+
+# Assuming the following objects are already in your environment from the previous steps:
+# - fit_ebayes: The results object from eBayes()
+# - gene_data_matched_cluster: Gene expression matrix (patients as rows, genes as columns, numeric)
+#                              containing only the patients present in the cluster analysis.
+# - cluster_info_matched: Dataframe mapping original_id (rownames of gene_data_matched_cluster)
+#                         to 'community' and 'micro_diagnosis'.
+# - cont.matrix: The contrast matrix used in limma.
+
+# Define the adjusted p-value threshold used previously
+adj_p_threshold <- 0.1
+
+# Iterate through each contrast defined in the limma analysis
+contrast_names <- colnames(cont.matrix)
+
+for (contrast in contrast_names) {
+  cat("\nGenerating heatmap for contrast:", contrast, "\n")
+  
+  # 1. Extract full results table for the current contrast
+  res_table_full <- topTable(fit_ebayes, coef = contrast, adjust.method = "BH", number = Inf)
+  
+  # 2. Filter significant genes and select top 50 by absolute logFC
+  top_genes_df <- res_table_full %>%
+    rownames_to_column("Gene") %>%
+    filter(adj.P.Val < adj_p_threshold) %>% # Filter by significance first
+    mutate(absLogFC = abs(logFC)) %>%      # Calculate absolute log fold change
+    arrange(desc(absLogFC)) %>%            # Sort by absolute logFC descending
+    slice_head(n = 50)                     # Take the top 50
+  
+  # Get the names of the top genes
+  top_gene_names <- top_genes_df$Gene
+  
+  # Check if any genes were selected
+  if (length(top_gene_names) == 0) {
+    cat("  No significant genes found for contrast", contrast, "with adj.P.Val <", adj_p_threshold, ". Skipping heatmap.\n")
+    next # Move to the next contrast
+  }
+  
+  cat("  Selected top", length(top_gene_names), "significant genes based on absolute logFC.\n")
+  
+  # 3. Prepare the expression data matrix for the heatmap
+  # Select data for the top genes from the matched expression data
+  # pheatmap requires genes as rows and samples as columns
+  heatmap_data <- t(gene_data_matched_cluster[, top_gene_names, drop = FALSE])
+  
+  # Ensure the matrix is numeric
+  heatmap_data <- apply(heatmap_data, 2, as.numeric)
+  rownames(heatmap_data) <- top_gene_names                 # Gene names as rows
+  colnames(heatmap_data) <- rownames(gene_data_matched_cluster) # Original patient IDs as columns
+  
+  # 4. Prepare the annotation data for the columns (patients)
+  # Make sure the row names of the annotation match the column names of the heatmap_data
+  annotation_col <- data.frame(
+    Community = factor(cluster_info_matched$community), # Ensure community is a factor
+    MicroDiagnosis = factor(cluster_info_matched$micro_diagnosis) # Ensure diagnosis is a factor
+  )
+  rownames(annotation_col) <- cluster_info_matched$original_id # Match patient IDs
+  
+  # Check consistency
+  if (!identical(colnames(heatmap_data), rownames(annotation_col))) {
+    stop("Mismatch between heatmap column names and annotation row names for contrast: ", contrast)
+  }
+  
+  # 5. Define annotation colors (optional but recommended)
+  # Create color palettes
+  num_communities <- length(levels(annotation_col$Community))
+  community_colors <- RColorBrewer::brewer.pal(n = max(3, num_communities), name = "Set1")[1:num_communities] # Use Set1 palette, adjust if needed
+  names(community_colors) <- levels(annotation_col$Community)
+  
+  diagnosis_colors <- c("None" = "grey80", "Bacterial" = "firebrick", "Viral" = "steelblue", "Bacterial & Viral" = "purple")
+  # Filter colors to only include diagnoses present in the data
+  present_diagnoses <- levels(annotation_col$MicroDiagnosis)
+  diagnosis_colors_present <- diagnosis_colors[names(diagnosis_colors) %in% present_diagnoses]
+  
+  annotation_colors <- list(
+    Community = community_colors,
+    MicroDiagnosis = diagnosis_colors_present
+  )
+  
+  # 6. Generate the heatmap
+  pheatmap(
+    heatmap_data,
+    annotation_col = annotation_col,
+    annotation_colors = annotation_colors,
+    scale = "row",                # Scale expression values by row (gene)
+    clustering_distance_rows = "correlation", # Cluster genes by correlation distance
+    clustering_distance_cols = "euclidean",   # Cluster samples by Euclidean distance
+    clustering_method = "ward.D2",  # Hierarchical clustering method
+    show_colnames = FALSE,          # Hide sample names (usually too many)
+    show_rownames = TRUE,           # Show gene names
+    fontsize_row = 6,               # Adjust font size for gene names if needed (especially with 50 genes)
+    border_color = NA,             # Remove cell borders for cleaner look
+    main = paste("Top", length(top_gene_names), "DEGs (Ranked by |logFC|) for", contrast) # Dynamic title
+  )
+  
+  # Add a small delay if running in a loop in some environments to ensure plots render
+  Sys.sleep(0.5) 
+  
+}
+
+cat("\nFinished generating heatmaps.\n")
+
