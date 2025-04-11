@@ -221,3 +221,92 @@ print(deg_details$C1vsRest$upregulated)
 
 # deg_details$C4vsRest$upregulated - Genes upregulated in C4 compared to C1, C2, and C3
 # deg_details$C4vsRest$downregulated - Genes downregulated in C4 compared to the rest
+
+###############################################################################
+
+# XGR
+
+###############################################################################
+
+library(viridis)
+
+# Save each DEG list as a separate .rds file
+for (contrast in names(deg_details)) {
+  for (direction in c("upregulated", "downregulated")) {
+    gene_vector <- deg_details[[contrast]][[direction]]
+    
+    if (length(gene_vector) == 0) next
+    
+    file_name <- paste0(contrast, "_", direction, ".rds")
+    saveRDS(gene_vector, file = file_name)
+    cat("Saved:", file_name, "\n")
+  }
+}
+
+# Helper: Read RDS → Enrich → Plot (top 10 terms max)
+plot_from_rds <- function(file_path) {
+  gene_vector <- readRDS(file_path)
+  parts <- strsplit(basename(file_path), "_|\\.rds")[[1]]
+  contrast_name <- parts[1]
+  direction <- parts[2]
+  
+  cat("Processing:", contrast_name, "-", direction, "\n")
+  
+  if (length(gene_vector) == 0) {
+    cat("No genes in file:", file_path, "\n")
+    return(NULL)
+  }
+  
+  # Enrichment
+  eTerm <- xEnricherGenes(data = gene_vector, ontology = "MsigdbC2REACTOME", background = "protein coding")
+  res <- xEnrichViewer(eTerm, sortBy = "adjp", details = TRUE)
+  
+  # Take top 10 only (if they exist)
+  res <- res %>% arrange(adjp) %>% slice_head(n = 10)
+  
+  if (nrow(res) == 0 || all(is.na(res$fc))) {
+    cat("No enrichment to show for", contrast_name, direction, "\n")
+    return(NULL)
+  }
+  
+  # Format adjusted p-values for labels
+  res$formatted_adjp <- sapply(res$adjp, function(p) {
+    sci <- format(p, scientific = TRUE)
+    parts <- strsplit(sci, "e")[[1]]
+    base <- as.numeric(parts[1])
+    exponent <- as.integer(parts[2])
+    bquote(.(base) %*% 10^.(exponent))
+  })
+  
+  # Plot top 10
+  p <- ggplot(res, aes(x = fc, y = reorder(name, fc))) +
+    geom_point(aes(size = -log10(adjp), color = -log10(adjp))) +
+    geom_text(aes(label = formatted_adjp), hjust = -0.2, size = 3, parse = TRUE) +
+    scale_color_viridis_c() +
+    guides(size = "none") +
+    labs(
+      title = paste(contrast_name, "-", direction, "Genes (Top 10 Pathways)"),
+      x = "Fold Enrichment",
+      y = NULL,
+      color = expression(-log[10]~"adj p-value")
+    ) +
+    theme_minimal() +
+    theme(
+      axis.title.x = element_text(size = 12, face = "bold"),
+      axis.text.x = element_text(size = 10),
+      plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+      plot.margin = margin(10, 20, 10, 10)
+    ) +
+    coord_cartesian(xlim = c(0, max(res$fc, na.rm = TRUE) + 2))
+  
+  return(p)
+}
+
+# Get list of saved .rds DEG files
+deg_files <- list.files(pattern = "C[1-4]vsRest_(upregulated|downregulated)\\.rds$")
+
+# Loop and plot each (top 10 terms only)
+for (file in deg_files) {
+  plot_obj <- plot_from_rds(file)
+  if (!is.null(plot_obj)) print(plot_obj)
+}
