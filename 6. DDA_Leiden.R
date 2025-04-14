@@ -182,22 +182,20 @@ print(summary_df)
 
 # --- 7. Visualize DEG Counts ---
 
-# Reshape data for ggplot
+# Create plot_data using only the upregulated genes count column from summary_df
 plot_data <- summary_df %>%
-  pivot_longer(cols = c("Upregulated", "Downregulated"), names_to = "Direction", values_to = "Count") %>%
-  mutate(Direction = factor(Direction, levels = c("Upregulated", "Downregulated")))
+  select(Contrast, Upregulated) %>%
+  rename(Count = Upregulated) %>%
+  mutate(Direction = "Upregulated")
 
 # Create the bar plot
 deg_barplot <- ggplot(plot_data, aes(x = Contrast, y = Count, fill = Direction)) +
-  geom_col(position = position_dodge(width = 0.8), width = 0.7) +
-  geom_text(aes(label = Count),
-            position = position_dodge(width = 0.8),
-            vjust = -0.3,
-            size = 3) +
-  scale_fill_manual(values = c("Upregulated" = "firebrick", "Downregulated" = "steelblue")) +
+  geom_col(width = 0.7) +
+  geom_text(aes(label = Count), vjust = -0.3, size = 3) +
+  scale_fill_manual(values = c("Upregulated" = "darkblue")) +
   labs(
-    title = "Differentially Expressed Genes per Contrast",
-    subtitle = paste("Adjusted P-value <", adj_p_threshold, " & |LogFC| >", logfc_threshold),
+    title = "Upregulated Differentially Expressed Genes per Contrast",
+    subtitle = bquote("Adjusted P-value < " ~ .(adj_p_threshold) ~ " & " ~ log[2] ~ "(Fold Change) > " ~ .(logfc_threshold)),
     x = "Contrast Comparison",
     y = "Number of Genes",
     fill = "Regulation"
@@ -312,7 +310,6 @@ for (file in deg_files) {
 }
 
 #################### Heatmap #############################################
-
 # Ensure pheatmap and other necessary libraries are loaded
 # install.packages("pheatmap")
 # install.packages("RColorBrewer")
@@ -342,24 +339,23 @@ for (contrast in contrast_names) {
   # 1. Extract full results table for the current contrast
   res_table_full <- topTable(fit_ebayes, coef = contrast, adjust.method = "BH", number = Inf)
   
-  # 2. Filter significant genes and select top 50 by absolute logFC
+  # 2. Filter significant genes and select top 50 upregulated genes (logFC > 0)
   top_genes_df <- res_table_full %>%
     rownames_to_column("Gene") %>%
-    filter(adj.P.Val < adj_p_threshold) %>% # Filter by significance first
-    mutate(absLogFC = abs(logFC)) %>%      # Calculate absolute log fold change
-    arrange(desc(absLogFC)) %>%            # Sort by absolute logFC descending
-    slice_head(n = 50)                     # Take the top 50
+    filter(adj.P.Val < adj_p_threshold, logFC > 0) %>%  # Filter by significance and ensure upregulation
+    arrange(desc(logFC)) %>%                            # Order by logFC (highest first)
+    slice_head(n = 50)                                  # Take the top 50
   
   # Get the names of the top genes
   top_gene_names <- top_genes_df$Gene
   
   # Check if any genes were selected
   if (length(top_gene_names) == 0) {
-    cat("  No significant genes found for contrast", contrast, "with adj.P.Val <", adj_p_threshold, ". Skipping heatmap.\n")
+    cat("  No significant upregulated genes found for contrast", contrast, "with adj.P.Val <", adj_p_threshold, ". Skipping heatmap.\n")
     next # Move to the next contrast
   }
   
-  cat("  Selected top", length(top_gene_names), "significant genes based on absolute logFC.\n")
+  cat("  Selected top", length(top_gene_names), "significant upregulated genes based on logFC.\n")
   
   # 3. Prepare the expression data matrix for the heatmap
   # Select data for the top genes from the matched expression data
@@ -374,10 +370,10 @@ for (contrast in contrast_names) {
   # 4. Prepare the annotation data for the columns (patients)
   # Make sure the row names of the annotation match the column names of the heatmap_data
   annotation_col <- data.frame(
-    Community = factor(cluster_info_matched$community), # Ensure community is a factor
+    Community = factor(cluster_info_matched$community),         # Ensure community is a factor
     MicroDiagnosis = factor(cluster_info_matched$micro_diagnosis) # Ensure diagnosis is a factor
   )
-  rownames(annotation_col) <- cluster_info_matched$original_id # Match patient IDs
+  rownames(annotation_col) <- cluster_info_matched$original_id     # Match patient IDs
   
   # Check consistency
   if (!identical(colnames(heatmap_data), rownames(annotation_col))) {
@@ -405,22 +401,17 @@ for (contrast in contrast_names) {
     heatmap_data,
     annotation_col = annotation_col,
     annotation_colors = annotation_colors,
-    scale = "row",                # Scale expression values by row (gene)
+    scale = "row",                     # Scale expression values by row (gene)
     clustering_distance_rows = "correlation", # Cluster genes by correlation distance
-    clustering_distance_cols = "euclidean",   # Cluster samples by Euclidean distance
-    clustering_method = "ward.D2",  # Hierarchical clustering method
-    show_colnames = FALSE,          # Hide sample names (usually too many)
-    show_rownames = TRUE,           # Show gene names
-    fontsize_row = 6,               # Adjust font size for gene names if needed (especially with 50 genes)
-    border_color = NA,             # Remove cell borders for cleaner look
-    main = paste("Top", length(top_gene_names), "DEGs (Ranked by |logFC|) for", contrast) # Dynamic title
+    clustering_distance_cols = "euclidean",     # Cluster samples by Euclidean distance
+    clustering_method = "ward.D2",     # Hierarchical clustering method
+    show_colnames = FALSE,             # Hide sample names (usually too many)
+    show_rownames = TRUE,              # Show gene names
+    fontsize_row = 6,                  # Adjust font size for gene names if needed (especially with 50 genes)
+    border_color = NA,                 # Remove cell borders for cleaner look
+    main = paste("Top", length(top_gene_names), "Upregulated DEGs (Ranked by logFC) for", contrast) # Dynamic title
   )
   
   # Add a small delay if running in a loop in some environments to ensure plots render
   Sys.sleep(0.5) 
-  
 }
-
-cat("\nFinished generating heatmaps.\n")
-
-
